@@ -34,7 +34,8 @@ const persons = [
 app.get("/api/persons", (request, response) => {
   response.json(persons);
 });
-app.get("/info", (request, response) => {
+app.get("/api/persons/info", (request, response) => {
+  response.set("Content-Type", "text/html");
   response.send(
     `the phonebook has info for ${persons.length} people <br/> ${Date()}`
   );
@@ -53,6 +54,7 @@ app.get("/api/persons/:id", (request, response) => {
 app.delete("/api/persons/:id", (request, response) => {
   const id = request.params.id;
   const person = persons.find((person) => person.id === id);
+  persons = persons.filter(person => person.id !== id)
 
   console.log(`deleted contact with id ${id}`);
 
