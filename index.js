@@ -1,88 +1,124 @@
 const express = require("express");
 const app = express();
-const morgan = require("morgan");
-
+const Person = require("./models/persons");
 const cors = require("cors");
-
+require("dotenv").config();
 app.use(cors());
 app.use(express.json());
-app.use(morgan("tiny"));
-app.use(express.static('dist'));
-
-const persons = [
-  {
-    id: "1",
-    name: "Arto Hellas",
-    number: "040-123456",
-  },
-  {
-    id: "2",
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-  },
-  {
-    id: "3",
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-  {
-    id: "4",
-    name: "Mary Poppendieck",
-    number: "39-23-6423122",
-  },
-];
-
+app.use(express.static("dist"));
 app.get("/api/persons", (request, response) => {
-  response.json(persons);
+  Person.find({}).then((result) => {
+    response.json(result);
+    console.log(result);
+  });
 });
 app.get("/api/persons/info", (request, response) => {
   response.set("Content-Type", "text/html");
   response.send(
-    `the phonebook has info for ${persons.length} people <br/> ${Date()}`
+    `the phonebook has info for ${Person.length} people <br/> ${Date()}`
   );
 });
 
-app.get("/api/persons/:id", (request, response) => {
+app.get("/api/persons/:id", (request, response, next) => {
   const id = request.params.id;
-  const person = persons.find((person) => person.id === id);
-  if (person) {
-    response.json(person);
-  } else {
-    response.status(404).send({ error: "not found" });
-  }
+
+  Person.findById(id)
+    .then((person) => {
+      if (person) {
+        console.log(person);
+        response.json(person);
+      } else {
+        response.status(404).send({ error: "not found" }).end();
+      }
+    })
+    .catch((error) => next(error));
+  // .catch((err) => {
+  //   console.error(err);
+  //   response.status(400).send({ error: "malformatted ID" });
+  // });
 });
 
 app.delete("/api/persons/:id", (request, response) => {
   const id = request.params.id;
-  const person = persons.find((person) => person.id === id);
-  persons = persons.filter(person => person.id !== id)
 
-  console.log(`deleted contact with id ${id}`);
-
-  response.status(204).end();
+  Person.findByIdAndDelete(id)
+    .then((person) => {
+      if (person) {
+        response.json(person);
+        console.log(`deleted contact with id ${id}`);
+        response.status(204).end();
+      } else {
+        response.status(404).send("contact does not exists");
+        console.log("contact does not exists");
+      }
+    })
+    .catch((err) => {
+      console.log(`error deleting contact with id ${id}`, err);
+    });
 });
 
-app.post("/api/persons", (request, response) => {
-  const maxid = persons.length;
+app.put("/api/persons/:_id", (request, response, next) => {
+  const id = request.params._id;
+  const updatedperson = request.body;
 
+  Person.findByIdAndUpdate(id, { number: updatedperson.number })
+    .then((updatedperson) => {
+      if (updatedperson) {
+        response.json(updatedperson);
+        console.log(`updated contact with id ${id}`);
+      } else {
+        response.status(404).send({ error: "contact not found" });
+      }
+    })
+    .catch((error) => next(error));
+});
+
+app.post("/api/persons", (request, response, next) => {
   const newperson = request.body;
-  newperson.id = String(maxid + 1);
+  const person = new Person(newperson);
 
-  if (
-    persons.some(
-      (persons) =>
-        persons.name === newperson.name && persons.number === newperson.number
-    )
-  ) {
-    response.status(400).send({ error: "name must be unique" });
-  } else if (!newperson.name || !newperson.number) {
-    return response.status(400).send({ error: "name and number are required" });
-  } else {
-    persons.push(newperson);
-    console.log(newperson);
-    response.json(newperson);
+  if (newperson === undefined) {
+    return response.status(400).json({ error: "content missing" });
   }
+
+  Person.findOne({
+    name: newperson.name,
+    number: newperson.number,
+  })
+
+    .then((existingPerson) => {
+      if (existingPerson) {
+        return response.status(400).json({ error: "person already exists" });
+      } else {
+        return person.save();
+      }
+    })
+    .then((savedPerson) => {
+      response.status(201).json(savedPerson);
+      console.log(person);
+      console.log(`persons saved`);
+    })
+    .catch((error) => next(error));
 });
+
+const unknownEndpoint = (request, response) => {
+  response.status(404).send({ error: "unknown endpoint" });
+};
+
+// handler of requests with unknown endpoint
+app.use(unknownEndpoint);
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message);
+
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: "malformatted id" });
+  } else if (error.name === "ValidationError") {
+    return response.status(400).json({ error: error.message });
+  }
+  next(error);
+};
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
